@@ -1,0 +1,7 @@
+[package]
+name = "nes-rs"
+version = "0.1.0"
+authors = ["Dmitri Melnikov <github@dmit.me>"]
+
+[dependencies]
+byteorder = "0.4.2"
