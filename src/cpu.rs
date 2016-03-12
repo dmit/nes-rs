@@ -28,7 +28,7 @@ impl Cpu {
         }
     }
 
-    fn read(&self, addr: u16) -> u8 {
+    fn read_u8(&self, addr: u16) -> u8 {
         match addr {
             0x0000...0x07ff => self.ram[addr as usize],
             0x0800...0x1fff => self.ram[(addr % 0x800) as usize],
@@ -42,7 +42,15 @@ impl Cpu {
         }
     }
 
-    fn write(&mut self, addr: u16, value: u8) {
+    fn read_i8(&self, addr: u16) -> i8 {
+        self.read_u8(addr) as i8
+    }
+
+    fn read_u16(&self, addr: u16) -> u16 {
+        (self.read_u8(addr) as u16) << 8 | self.read_u8(addr + 1) as u16
+    }
+
+    fn write_u8(&mut self, addr: u16, value: u8) {
         match addr {
             0x0000...0x07ff => self.ram[addr as usize] = value,
             0x0800...0x1fff => self.ram[(addr % 0x800) as usize] = value,
@@ -58,14 +66,66 @@ impl Cpu {
 
     pub fn exec(&mut self) {
         let addr = self.reg.pc;
-        let opcode = self.read(addr);
+        let opcode = self.read_u8(addr);
         let instr = Instr::from(opcode);
         println!("{:#06x} {:#04x} {:?}", addr, opcode, instr);
 
-        self.reg.pc += 1;
+        self.reg.pc = self.reg.pc.wrapping_add(1);
 
         match instr {
+            Instr::Asl(m) => {
+                let addr = self.payload_u16(m);
+                let old_val = self.read_u8(addr);
+                let new_val = old_val << 1;
+
+                self.reg.status.carry = old_val & 0b1000_0000 != 0;
+                self.reg.status.neg = new_val & 0b1000_0000 != 0;
+                self.reg.status.zero = new_val == 0;
+
+                self.write_u8(addr, new_val);
+            }
+            Instr::Beq(m) => {
+                if self.reg.status.zero {
+                    self.reg.pc = self.payload_u16(m);
+                }
+            }
+            Instr::Bit(m) => {
+                let val = self.payload_u8(m);
+
+                self.reg.status.neg = val & 0b1000_0000 != 0;
+                self.reg.status.overflow = val & 0b0100_0000 != 0;
+                self.reg.status.zero = val & self.reg.acc == 0;
+            }
+            Instr::Bne(m) => {
+                let addr = self.payload_u16(m);
+                if !self.reg.status.zero {
+                    self.reg.pc = addr;
+                }
+            }
             Instr::Brk => self.interrupt(Interrupt::Brk),
+            Instr::Inc(m) => {
+                let addr = self.payload_u16(m);
+                let old_val = self.read_u8(addr);
+                let new_val = old_val.wrapping_add(1);
+
+                self.reg.status.neg = old_val & 0b1000_0000 != 0;
+                self.reg.status.zero = new_val == 0;
+
+                self.write_u8(addr, new_val);
+            }
+            Instr::Inx => {
+                self.reg.status.neg = self.reg.y & 0b1000_0000 != 0;
+                self.reg.y = self.reg.y.wrapping_add(1);
+                self.reg.status.zero = self.reg.y == 0;
+            }
+            Instr::Iny => {
+                self.reg.status.neg = self.reg.y & 0b1000_0000 != 0;
+                self.reg.y = self.reg.y.wrapping_add(1);
+                self.reg.status.zero = self.reg.y == 0;
+            }
+            Instr::Lda(m) => self.reg.acc = self.payload_u8(m),
+            Instr::Ldx(m) => self.reg.x = self.payload_u8(m),
+            Instr::Ldy(m) => self.reg.y = self.payload_u8(m),
             _ => {
                 panic!("Unknown instruction {:?} from opcode {:#x} at {:#x}",
                        instr,
@@ -75,24 +135,43 @@ impl Cpu {
         }
     }
 
-    fn read_payload(&mut self, mode: AddrMode) -> Vec<u8> {
-        let payload_len = mode.payload_len();
-        let mut payload = vec![0u8; payload_len as usize];
-        for i in 0..payload_len {
-            let b = self.read(self.reg.pc + i as u16);
-            println!("  {:#x}", b);
-            payload[i as usize] = b;
+    fn payload_addr(&self, mode: AddrMode) -> u16 {
+        match mode {
+            AddrMode::Abs => self.read_u16(self.reg.pc),
+            AddrMode::Rel => {
+                let offset = self.read_i8(self.reg.pc);
+                ((self.reg.pc as i16 + 1) + offset as i16) as u16
+            }
+            AddrMode::Zero => self.read_u8(self.reg.pc) as u16,
+            AddrMode::ZeroX => {
+                let offset = self.read_u8(self.reg.pc);
+                self.reg.x.wrapping_add(offset) as u16
+            }
+            AddrMode::ZeroY => {
+                let offset = self.read_u8(self.reg.pc);
+                self.reg.y.wrapping_add(offset) as u16
+            }
+            _ => panic!("Unsupported address mode: {:?}", mode),
         }
+    }
 
-        self.reg.pc += payload_len as u16;
+    fn payload_u8(&mut self, mode: AddrMode) -> u8 {
+        let payload_len = mode.payload_len();
+        let addr = self.payload_addr(mode);
+        self.reg.pc = self.reg.pc.wrapping_add(payload_len);
+        self.read_u8(addr)
+    }
 
-        payload
+    fn payload_u16(&mut self, mode: AddrMode) -> u16 {
+        let payload_len = mode.payload_len();
+        let addr = self.payload_addr(mode);
+        self.reg.pc = self.reg.pc.wrapping_add(payload_len);
+        self.read_u16(addr)
     }
 
     pub fn interrupt(&mut self, int: Interrupt) {
         let vec_addr = int.addr();
-        let addr = (self.read(vec_addr) as u16) << 8 | self.read(vec_addr + 1) as u16;
-        self.reg.pc = addr;
+        self.reg.pc = self.read_u16(vec_addr);
     }
 }
 impl fmt::Debug for Cpu {
@@ -109,7 +188,7 @@ impl fmt::Debug for Cpu {
 struct Reg {
     pc: u16,
     sp: u8,
-    status: u8,
+    status: StatusReg,
     acc: u8,
     x: u8,
     y: u8,
@@ -125,6 +204,16 @@ impl fmt::Debug for Reg {
                self.x,
                self.y)
     }
+}
+
+#[derive(Debug, Default)]
+struct StatusReg {
+    neg: bool,
+    overflow: bool,
+    is_brk: bool,
+    irq_disabled: bool,
+    zero: bool,
+    carry: bool,
 }
 
 #[derive(Debug, Default)]
@@ -484,7 +573,7 @@ impl Instr {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 enum AddrMode {
     Abs,
     AbsX,
@@ -501,7 +590,7 @@ enum AddrMode {
     ZeroY,
 }
 impl AddrMode {
-    fn payload_len(self) -> u8 {
+    fn payload_len(self) -> u16 {
         match self {
             AddrMode::Abs => 2,
             AddrMode::AbsX => 2,
