@@ -44,7 +44,7 @@ impl fmt::Debug for Rom {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f,
                "prg: {}, chr: {}, mirroring: {:?}, sram: {}, four screen mirroring: {}, mapper: \
-                {:x}, trainer: {}",
+                {:#x}, trainer: {}",
                self.prg_cnt,
                self.chr_cnt,
                self.mirroring,
@@ -59,7 +59,7 @@ impl Rom {
         let mut rdr = Cursor::new(bytes);
         let magic = rdr.read_u32::<BigEndian>().expect("Magic bytes");
         if magic != 0x4E45531A {
-            panic!("Invalid magic number: {:x}", magic);
+            panic!("Invalid magic number: {:#x}", magic);
         }
 
         let prg_cnt = rdr.read_u8().unwrap();
@@ -76,6 +76,11 @@ impl Rom {
         let four_screen_mirroring = ctrl1 & 0b1000 != 0;
         let mapper = ctrl1 >> 4 | (ctrl2 & 0b11110000);
 
+        let padding = rdr.read_u64::<BigEndian>().expect("8 zero bytes of padding");
+        if padding != 0 {
+            panic!("Invalid padding: {:#x}", padding);
+        }
+
         let trainer: Option<Vec<u8>> = match trainer_present {
             true => {
                 let mut vec = vec![0; 512];
@@ -88,13 +93,13 @@ impl Rom {
         };
 
         let prg_rom_len: usize = 16 * 1024 * prg_cnt as usize;
-        let mut prg_rom = vec![0; prg_rom_len];
+        let mut prg_rom = vec![0u8; prg_rom_len];
         if rdr.read(&mut prg_rom).expect("16kb PRG-ROM") != prg_rom_len {
             panic!("Failed to read {} bytes of PRG-ROM", prg_rom_len);
         }
 
         let chr_rom_len: usize = 8 * 1024 * chr_cnt as usize;
-        let mut chr_rom = vec![0; chr_rom_len];
+        let mut chr_rom = vec![0u8; chr_rom_len];
         if rdr.read(&mut chr_rom).expect("8kb CHR-ROM") != chr_rom_len {
             panic!("Failed to read {} bytes of CHR-ROM", chr_rom_len);
         }
