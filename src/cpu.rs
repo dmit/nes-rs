@@ -73,6 +73,15 @@ impl Cpu {
         self.reg.pc = self.reg.pc.wrapping_add(1);
 
         match instr {
+            Instr::And(m) => {
+                let mem = self.payload_u8(m);
+                let val = self.reg.acc & mem;
+
+                self.reg.status.neg = val & 0b1000_0000 != 0;
+                self.reg.status.zero = val == 0;
+
+                self.reg.acc = val;
+            }
             Instr::Asl(m) => {
                 let addr = self.payload_u16(m);
                 let old_val = self.read_u8(addr);
@@ -85,8 +94,9 @@ impl Cpu {
                 self.write_u8(addr, new_val);
             }
             Instr::Beq(m) => {
+                let addr = self.payload_u16(m);
                 if self.reg.status.zero {
-                    self.reg.pc = self.payload_u16(m);
+                    self.reg.pc = addr;
                 }
             }
             Instr::Bit(m) => {
@@ -103,6 +113,14 @@ impl Cpu {
                 }
             }
             Instr::Brk => self.interrupt(Interrupt::Brk),
+            Instr::Cmp(m) => {
+                let mem = self.payload_u8(m);
+                let val = self.reg.acc - mem;
+
+                self.reg.status.carry = self.reg.acc >= mem;
+                self.reg.status.neg = val & 0b1000_0000 != 0;
+                self.reg.status.zero = val == 0;
+            }
             Instr::Inc(m) => {
                 let addr = self.payload_u16(m);
                 let old_val = self.read_u8(addr);
@@ -114,9 +132,9 @@ impl Cpu {
                 self.write_u8(addr, new_val);
             }
             Instr::Inx => {
-                self.reg.status.neg = self.reg.y & 0b1000_0000 != 0;
-                self.reg.y = self.reg.y.wrapping_add(1);
-                self.reg.status.zero = self.reg.y == 0;
+                self.reg.status.neg = self.reg.x & 0b1000_0000 != 0;
+                self.reg.x = self.reg.x.wrapping_add(1);
+                self.reg.status.zero = self.reg.x == 0;
             }
             Instr::Iny => {
                 self.reg.status.neg = self.reg.y & 0b1000_0000 != 0;
@@ -138,6 +156,15 @@ impl Cpu {
     fn payload_addr(&self, mode: AddrMode) -> u16 {
         match mode {
             AddrMode::Abs => self.read_u16(self.reg.pc),
+            AddrMode::AbsX => {
+                let offset = self.read_u8(self.reg.pc);
+                (self.reg.x as u16).wrapping_add(offset as u16)
+            }
+            AddrMode::AbsY => {
+                let offset = self.read_u8(self.reg.pc);
+                (self.reg.y as u16).wrapping_add(offset as u16)
+            }
+            AddrMode::Immediate => self.reg.pc,
             AddrMode::Rel => {
                 let offset = self.read_i8(self.reg.pc);
                 ((self.reg.pc as i16 + 1) + offset as i16) as u16
