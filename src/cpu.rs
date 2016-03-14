@@ -47,7 +47,7 @@ impl Cpu {
     }
 
     fn read_u16(&self, addr: u16) -> u16 {
-        (self.read_u8(addr) as u16) << 8 | self.read_u8(addr + 1) as u16
+        (self.read_u8(addr + 1) as u16) << 8 | self.read_u8(addr) as u16
     }
 
     fn write_u8(&mut self, addr: u16, value: u8) {
@@ -113,6 +113,7 @@ impl Cpu {
                 }
             }
             Instr::Brk => self.interrupt(Interrupt::Brk),
+            Instr::Cld => self.reg.status.decimal_mode = false,
             Instr::Cmp(m) => {
                 let mem = self.payload_u8(m);
                 let val = self.reg.acc - mem;
@@ -144,6 +145,22 @@ impl Cpu {
             Instr::Lda(m) => self.reg.acc = self.payload_u8(m),
             Instr::Ldx(m) => self.reg.x = self.payload_u8(m),
             Instr::Ldy(m) => self.reg.y = self.payload_u8(m),
+            Instr::Sei => self.reg.status.irq_disabled = true,
+            Instr::Sta(m) => {
+                let addr = self.payload_addr(m);
+                let val = self.reg.acc;
+                self.write_u8(addr, val);
+            }
+            Instr::Stx(m) => {
+                let addr = self.payload_addr(m);
+                let val = self.reg.x;
+                self.write_u8(addr, val);
+            }
+            Instr::Sty(m) => {
+                let addr = self.payload_addr(m);
+                let val = self.reg.y;
+                self.write_u8(addr, val);
+            }
             _ => {
                 panic!("Unknown instruction {:?} from opcode {:#x} at {:#x}",
                        instr,
@@ -153,8 +170,8 @@ impl Cpu {
         }
     }
 
-    fn payload_addr(&self, mode: AddrMode) -> u16 {
-        match mode {
+    fn payload_addr(&mut self, mode: AddrMode) -> u16 {
+        let addr = match mode {
             AddrMode::Abs => self.read_u16(self.reg.pc),
             AddrMode::AbsX => {
                 let offset = self.read_u8(self.reg.pc);
@@ -179,26 +196,35 @@ impl Cpu {
                 self.reg.y.wrapping_add(offset) as u16
             }
             _ => panic!("Unsupported address mode: {:?}", mode),
-        }
+        };
+
+        self.reg.pc = self.reg.pc.wrapping_add(mode.payload_len());
+
+        addr
     }
 
     fn payload_u8(&mut self, mode: AddrMode) -> u8 {
-        let payload_len = mode.payload_len();
         let addr = self.payload_addr(mode);
-        self.reg.pc = self.reg.pc.wrapping_add(payload_len);
         self.read_u8(addr)
     }
 
     fn payload_u16(&mut self, mode: AddrMode) -> u16 {
-        let payload_len = mode.payload_len();
         let addr = self.payload_addr(mode);
-        self.reg.pc = self.reg.pc.wrapping_add(payload_len);
         self.read_u16(addr)
     }
 
     pub fn interrupt(&mut self, int: Interrupt) {
+        if self.reg.status.irq_disabled && int == Interrupt::Irq {
+            return;
+        }
+
         let vec_addr = int.addr();
-        self.reg.pc = self.read_u16(vec_addr);
+        let addr = self.read_u16(vec_addr);
+        println!("Interrupt vector for {:?} is {:#06x} at {:#06x}",
+                 int,
+                 addr,
+                 vec_addr);
+        self.reg.pc = addr;
     }
 }
 impl fmt::Debug for Cpu {
@@ -238,6 +264,7 @@ struct StatusReg {
     neg: bool,
     overflow: bool,
     is_brk: bool,
+    decimal_mode: bool,
     irq_disabled: bool,
     zero: bool,
     carry: bool,
@@ -264,7 +291,11 @@ impl PpuReg {
     }
 
     fn write(&mut self, addr: u16, value: u8) {
-        panic!("PpuReg write()");
+        match addr {
+            0 => self.ppu_ctrl1 = PpuCtrl1::from(value),
+            1 => self.ppu_ctrl2 = PpuCtrl2::from(value),
+            _ => panic!("Invalid PpuReg.write({:#x}, {:#x})", addr, value),
+        }
     }
 }
 
