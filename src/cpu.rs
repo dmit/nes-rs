@@ -47,7 +47,7 @@ impl Cpu {
     }
 
     fn read_u16(&self, addr: u16) -> u16 {
-        (self.read_u8(addr + 1) as u16) << 8 | self.read_u8(addr) as u16
+        self.read_u8(addr) as u16 | (self.read_u8(addr + 1) as u16) << 8
     }
 
     fn write_u8(&mut self, addr: u16, value: u8) {
@@ -64,11 +64,36 @@ impl Cpu {
         }
     }
 
+    fn pop_u8(&mut self) -> u8 {
+        let addr = self.reg.sp.wrapping_add(1);
+        self.reg.sp = addr;
+        self.read_u8(0x100 | addr as u16)
+    }
+
+    fn pop_u16(&mut self) -> u16 {
+        let lo = self.pop_u8();
+        let hi = self.pop_u8();
+        lo as u16 | (hi as u16) << 8
+    }
+
+    fn push_u8(&mut self, value: u8) {
+        let addr = 0x100 | self.reg.sp as u16;
+        self.write_u8(addr, value);
+        self.reg.sp = self.reg.sp.wrapping_sub(1);
+    }
+
     pub fn exec(&mut self) {
         let addr = self.reg.pc;
         let opcode = self.read_u8(addr);
         let instr = Instr::from(opcode);
-        println!("{:#06x} {:#04x} {:?}", addr, opcode, instr);
+        let b1 = self.read_u8(addr + 1);
+        let b2 = self.read_u8(addr + 2);
+        println!("{:#06x} {:#04x} {:?} -- {:02x} {:02x}",
+                 addr,
+                 opcode,
+                 instr,
+                 b1,
+                 b2);
 
         self.reg.pc = self.reg.pc.wrapping_add(1);
 
@@ -93,6 +118,12 @@ impl Cpu {
 
                 self.write_u8(addr, new_val);
             }
+            Instr::Bcs(m) => {
+                let addr = self.payload_u16(m);
+                if self.reg.status.carry {
+                    self.reg.pc = addr;
+                }
+            }
             Instr::Beq(m) => {
                 let addr = self.payload_u16(m);
                 if self.reg.status.zero {
@@ -106,9 +137,21 @@ impl Cpu {
                 self.reg.status.overflow = val & 0b0100_0000 != 0;
                 self.reg.status.zero = val & self.reg.acc == 0;
             }
+            Instr::Bmi(m) => {
+                let addr = self.payload_u16(m);
+                if self.reg.status.neg {
+                    self.reg.pc = addr;
+                }
+            }
             Instr::Bne(m) => {
                 let addr = self.payload_u16(m);
                 if !self.reg.status.zero {
+                    self.reg.pc = addr;
+                }
+            }
+            Instr::Bpl(m) => {
+                let addr = self.payload_addr(m);
+                if !self.reg.status.neg {
                     self.reg.pc = addr;
                 }
             }
@@ -122,29 +165,76 @@ impl Cpu {
                 self.reg.status.neg = val & 0b1000_0000 != 0;
                 self.reg.status.zero = val == 0;
             }
+            Instr::Dec(m) => {
+                let addr = self.payload_u16(m);
+                let val = self.read_u8(addr).wrapping_sub(1);
+
+                self.reg.status.neg = val & 0b1000_0000 != 0;
+                self.reg.status.zero = val == 0;
+
+                self.write_u8(addr, val);
+            }
+            Instr::Dex => {
+                self.reg.x = self.reg.x.wrapping_sub(1);
+                self.reg.status.neg = self.reg.x & 0b1000_0000 != 0;
+                self.reg.status.zero = self.reg.x == 0;
+            }
+            Instr::Dey => {
+                self.reg.y = self.reg.y.wrapping_sub(1);
+                self.reg.status.neg = self.reg.y & 0b1000_0000 != 0;
+                self.reg.status.zero = self.reg.y == 0;
+            }
             Instr::Inc(m) => {
                 let addr = self.payload_u16(m);
-                let old_val = self.read_u8(addr);
-                let new_val = old_val.wrapping_add(1);
+                let val = self.read_u8(addr).wrapping_add(1);
 
-                self.reg.status.neg = old_val & 0b1000_0000 != 0;
-                self.reg.status.zero = new_val == 0;
+                self.reg.status.neg = val & 0b1000_0000 != 0;
+                self.reg.status.zero = val == 0;
 
-                self.write_u8(addr, new_val);
+                self.write_u8(addr, val);
             }
             Instr::Inx => {
-                self.reg.status.neg = self.reg.x & 0b1000_0000 != 0;
                 self.reg.x = self.reg.x.wrapping_add(1);
+                self.reg.status.neg = self.reg.x & 0b1000_0000 != 0;
                 self.reg.status.zero = self.reg.x == 0;
             }
             Instr::Iny => {
-                self.reg.status.neg = self.reg.y & 0b1000_0000 != 0;
                 self.reg.y = self.reg.y.wrapping_add(1);
+                self.reg.status.neg = self.reg.y & 0b1000_0000 != 0;
                 self.reg.status.zero = self.reg.y == 0;
             }
-            Instr::Lda(m) => self.reg.acc = self.payload_u8(m),
-            Instr::Ldx(m) => self.reg.x = self.payload_u8(m),
-            Instr::Ldy(m) => self.reg.y = self.payload_u8(m),
+            Instr::Lda(m) => {
+                let val = self.payload_u8(m);
+
+                self.reg.status.neg = val & 0b1000_0000 != 0;
+                self.reg.status.zero = val == 0;
+
+                self.reg.acc = val;
+            }
+            Instr::Ldx(m) => {
+                let val = self.payload_u8(m);
+
+                self.reg.status.neg = val & 0b1000_0000 != 0;
+                self.reg.status.zero = val == 0;
+
+                self.reg.x = val;
+            }
+            Instr::Ldy(m) => {
+                let val = self.payload_u8(m);
+
+                self.reg.status.neg = val & 0b1000_0000 != 0;
+                self.reg.status.zero = val == 0;
+
+                self.reg.y = val;
+            }
+            Instr::Ora(m) => {
+                let mem = self.payload_u8(m);
+                let val = self.reg.acc | mem;
+
+                self.reg.status.neg = val & 0b1000_0000 != 0;
+                self.reg.status.zero = val == 0;
+            }
+            Instr::Rts => self.reg.pc = self.pop_u16().wrapping_add(1),
             Instr::Sei => self.reg.status.irq_disabled = true,
             Instr::Sta(m) => {
                 let addr = self.payload_addr(m);
@@ -160,6 +250,24 @@ impl Cpu {
                 let addr = self.payload_addr(m);
                 let val = self.reg.y;
                 self.write_u8(addr, val);
+            }
+            Instr::Txa => {
+                self.reg.status.neg = self.reg.x & 0b1000_0000 != 0;
+                self.reg.status.zero = self.reg.x == 0;
+
+                self.reg.acc = self.reg.x;
+            }
+            Instr::Txs => {
+                self.reg.status.neg = self.reg.x & 0b1000_0000 != 0;
+                self.reg.status.zero = self.reg.x == 0;
+
+                self.reg.sp = self.reg.x;
+            }
+            Instr::Tya => {
+                self.reg.status.neg = self.reg.y & 0b1000_0000 != 0;
+                self.reg.status.zero = self.reg.y == 0;
+
+                self.reg.acc = self.reg.y;
             }
             _ => {
                 panic!("Unknown instruction {:?} from opcode {:#x} at {:#x}",
@@ -182,9 +290,33 @@ impl Cpu {
                 (self.reg.y as u16).wrapping_add(offset as u16)
             }
             AddrMode::Immediate => self.reg.pc,
+            AddrMode::Ind => {
+                let addr = self.read_u16(self.reg.pc);
+                self.read_u16(addr)
+            }
+            AddrMode::IndX => {
+                let zero_offset = self.read_u8(self.reg.pc);
+                let zero_addr = self.reg.x as u16 + zero_offset as u16;
+                self.read_u16(zero_addr)
+            }
+            AddrMode::IndY => {
+                let zero_offset = self.read_u8(self.reg.pc);
+                let zero_addr = self.read_u16(zero_offset as u16);
+                zero_addr + self.reg.y as u16
+            }
             AddrMode::Rel => {
                 let offset = self.read_i8(self.reg.pc);
-                ((self.reg.pc as i16 + 1) + offset as i16) as u16
+                if offset < 0 {
+                    self.reg
+                        .pc
+                        .wrapping_add(1)
+                        .wrapping_sub(offset.wrapping_neg() as u16)
+                } else {
+                    self.reg
+                        .pc
+                        .wrapping_add(1)
+                        .wrapping_add(offset as u16)
+                }
             }
             AddrMode::Zero => self.read_u8(self.reg.pc) as u16,
             AddrMode::ZeroX => {
@@ -237,7 +369,6 @@ impl fmt::Debug for Cpu {
     }
 }
 
-#[derive(Default)]
 struct Reg {
     pc: u16,
     sp: u8,
@@ -249,17 +380,29 @@ struct Reg {
 impl fmt::Debug for Reg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f,
-               "pc={:#x} sp={:#x} status={:?} acc={:#x} x={:#x} y={:#x}",
+               "pc={:#x} sp={:#x} acc={:#x} x={:#x} y={:#x} status={:#?}",
                self.pc,
                self.sp,
-               self.status,
                self.acc,
                self.x,
-               self.y)
+               self.y,
+               self.status)
+    }
+}
+impl Default for Reg {
+    fn default() -> Reg {
+        Reg {
+            pc: 0,
+            sp: 0xfd,
+            status: StatusReg::default(),
+            acc: 0,
+            x: 0,
+            y: 0,
+        }
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct StatusReg {
     neg: bool,
     overflow: bool,
@@ -268,6 +411,19 @@ struct StatusReg {
     irq_disabled: bool,
     zero: bool,
     carry: bool,
+}
+impl Default for StatusReg {
+    fn default() -> StatusReg {
+        StatusReg {
+            neg: false,
+            overflow: false,
+            is_brk: false,
+            decimal_mode: false,
+            irq_disabled: true,
+            zero: false,
+            carry: false,
+        }
+    }
 }
 
 #[derive(Debug, Default)]
