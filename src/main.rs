@@ -1,9 +1,11 @@
 extern crate byteorder;
 
 mod cpu;
+mod ppu;
 mod rom;
 
 use cpu::{Cpu, Interrupt};
+use ppu::Ppu;
 use rom::Rom;
 
 use std::env;
@@ -19,6 +21,21 @@ fn main() {
     println!("ROM {:?}", rom);
 
     let mut cpu = Cpu::new(&rom);
+    println!("CPU {:?}", cpu);
+
+    let mut ppu = Ppu::default();
+    println!("PPU {:?}", ppu);
+
     cpu.interrupt(Interrupt::Reset);
+    // cpu.interrupt(Interrupt::Nmi);
+    ppu.reg = cpu.exec(ppu.reg);
+    for _ in 0..20 {
+        ppu.reg = cpu.exec(ppu.reg);
+        ppu.exec();
+        ppu.exec();
+        ppu.exec();
+        ppu.exec();
+    }
+
     println!("CPU {:?}", cpu);
 }

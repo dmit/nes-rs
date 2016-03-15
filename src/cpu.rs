@@ -1,6 +1,7 @@
 use std::fmt;
 use std::io::{Read, Write};
 
+use ppu::PpuReg;
 use rom::Rom;
 
 pub struct Cpu {
@@ -14,7 +15,11 @@ pub struct Cpu {
 impl Cpu {
     pub fn new(rom: &Rom) -> Cpu {
         let mut prg_rom = [0u8; 0x8000];
-        for (i, b) in rom.prg_rom.iter().enumerate() {
+        for (i, b) in rom.prg_rom
+                         .iter()
+                         .cycle()
+                         .take(0x8000)
+                         .enumerate() {
             prg_rom[i] = *b;
         }
 
@@ -82,7 +87,9 @@ impl Cpu {
         self.reg.sp = self.reg.sp.wrapping_sub(1);
     }
 
-    pub fn exec(&mut self) {
+    pub fn exec(&mut self, ppu_reg: PpuReg) -> PpuReg {
+        self.ppu_reg = ppu_reg;
+
         let addr = self.reg.pc;
         let opcode = self.read_u8(addr);
         let instr = Instr::from(opcode);
@@ -276,6 +283,8 @@ impl Cpu {
                        addr)
             }
         }
+
+        self.ppu_reg
     }
 
     fn payload_addr(&mut self, mode: AddrMode) -> u16 {
@@ -423,87 +432,6 @@ impl Default for StatusReg {
             zero: false,
             carry: false,
         }
-    }
-}
-
-#[derive(Debug, Default)]
-struct PpuReg {
-    ppu_ctrl1: PpuCtrl1,
-    ppu_ctrl2: PpuCtrl2,
-    ppu_status: PpuStatus,
-    spr_addr: u8,
-    spr_io: u8,
-    vram_addr1: u8,
-    vram_addr2: u8,
-    vram_io: u8,
-}
-impl PpuReg {
-    fn read(&self, addr: u16) -> u8 {
-        match addr {
-            2 => self.ppu_status.clone().into(),
-            7 => self.vram_io,
-            _ => panic!("Not a valid PpuReg address: {:#x}", addr),
-        }
-    }
-
-    fn write(&mut self, addr: u16, value: u8) {
-        match addr {
-            0 => self.ppu_ctrl1 = PpuCtrl1::from(value),
-            1 => self.ppu_ctrl2 = PpuCtrl2::from(value),
-            _ => panic!("Invalid PpuReg.write({:#x}, {:#x})", addr, value),
-        }
-    }
-}
-
-#[derive(Debug, Default)]
-struct PpuCtrl1(u8);
-impl PpuCtrl1 {
-    fn name_table_addr(self) -> u16 {
-        match self.0 & 0b11 {
-            0b00 => 0x2000,
-            0b01 => 0x2400,
-            0b10 => 0x2800,
-            0b11 => 0x2c00,
-            _ => unreachable!(),
-        }
-    }
-}
-impl From<u8> for PpuCtrl1 {
-    fn from(b: u8) -> Self {
-        PpuCtrl1(b)
-    }
-}
-impl Into<u8> for PpuCtrl1 {
-    fn into(self) -> u8 {
-        self.0
-    }
-}
-
-#[derive(Debug, Default)]
-struct PpuCtrl2(u8);
-impl PpuCtrl2 {}
-impl From<u8> for PpuCtrl2 {
-    fn from(b: u8) -> Self {
-        PpuCtrl2(b)
-    }
-}
-impl Into<u8> for PpuCtrl2 {
-    fn into(self) -> u8 {
-        self.0
-    }
-}
-
-#[derive(Clone, Debug, Default)]
-struct PpuStatus(u8);
-impl PpuStatus {}
-impl From<u8> for PpuStatus {
-    fn from(b: u8) -> Self {
-        PpuStatus(b)
-    }
-}
-impl Into<u8> for PpuStatus {
-    fn into(self) -> u8 {
-        self.0
     }
 }
 
