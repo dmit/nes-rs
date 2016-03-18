@@ -1,6 +1,8 @@
 extern crate byteorder;
 
+mod apu;
 mod cpu;
+mod cpu_instr;
 mod ppu;
 mod rom;
 

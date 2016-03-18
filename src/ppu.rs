@@ -18,7 +18,7 @@ pub struct Ppu {
 }
 impl Ppu {
     pub fn exec(&mut self) {
-        //TODO
+        // TODO
     }
 }
 impl fmt::Debug for Ppu {
@@ -35,9 +35,7 @@ struct PatternTable {
 }
 impl Default for PatternTable {
     fn default() -> PatternTable {
-        PatternTable {
-            tiles: [Tile::default(); 256],
-        }
+        PatternTable { tiles: [Tile::default(); 256] }
     }
 }
 
