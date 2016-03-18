@@ -1,7 +1,6 @@
 #[derive(Debug)]
 pub struct Instr(pub Op, pub Mode, pub Cycles);
 impl Instr {
-    //#[rustfmt_skip]
     pub fn from(opcode: u8) -> Instr {
         match opcode {
             0x00 => Instr(Op::Brk, Mode::Impl, Cycles::A(7)),
@@ -259,7 +258,7 @@ impl Mode {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum Cycles {
     A(u8),
     B(u8), // +1 if page boundary crossed

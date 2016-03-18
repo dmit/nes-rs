@@ -1,3 +1,25 @@
+use std::cell::RefCell;
+use std::fmt;
+use std::rc::Rc;
+
+pub struct Apu {
+    pub reg: Rc<RefCell<ApuReg>>,
+}
+impl Apu {
+    pub fn new() -> Apu {
+        Apu { reg: Rc::new(RefCell::new(ApuReg::default())) }
+    }
+
+    pub fn exec(&self) {
+        // TODO
+    }
+}
+impl fmt::Debug for Apu {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self.reg.borrow())
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct ApuReg {
     pulse1_ctrl: u8,

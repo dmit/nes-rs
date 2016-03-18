@@ -1,8 +1,9 @@
+use std::cell::RefCell;
 use std::fmt;
+use std::rc::Rc;
 
-#[derive(Default)]
 pub struct Ppu {
-    pub reg: PpuReg,
+    pub reg: Rc<RefCell<PpuReg>>,
     patterns0: PatternTable,
     patterns1: PatternTable,
     names0: NameTable,
@@ -17,13 +18,31 @@ pub struct Ppu {
     sprite_palette: Palette,
 }
 impl Ppu {
+    pub fn new() -> Ppu {
+        Ppu {
+            reg: Rc::new(RefCell::new(PpuReg::default())),
+            patterns0: PatternTable::default(),
+            patterns1: PatternTable::default(),
+            names0: NameTable::default(),
+            attrs0: AttrTable::default(),
+            names1: NameTable::default(),
+            attrs1: AttrTable::default(),
+            names2: NameTable::default(),
+            attrs2: AttrTable::default(),
+            names3: NameTable::default(),
+            attrs3: AttrTable::default(),
+            image_palette: Palette::default(),
+            sprite_palette: Palette::default(),
+        }
+    }
+
     pub fn exec(&mut self) {
         // TODO
     }
 }
 impl fmt::Debug for Ppu {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self.reg)
+        write!(f, "{:?}", self.reg.borrow())
     }
 }
 

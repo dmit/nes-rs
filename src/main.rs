@@ -6,6 +6,7 @@ mod cpu_instr;
 mod ppu;
 mod rom;
 
+use apu::Apu;
 use cpu::{Cpu, Interrupt};
 use ppu::Ppu;
 use rom::Rom;
@@ -22,21 +23,27 @@ fn main() {
     let rom = Rom::from(&rom_bytes);
     println!("ROM {:?}", rom);
 
-    let mut cpu = Cpu::new(&rom);
-    println!("CPU {:?}", cpu);
-
-    let mut ppu = Ppu::default();
+    let mut ppu = Ppu::new();
     println!("PPU {:?}", ppu);
 
+    let mut apu = Apu::new();
+    println!("APU {:?}", apu);
+
+    let mut cpu = Cpu::new(ppu.reg.clone(), apu.reg.clone(), rom);
+    println!("CPU {:?}", cpu);
+
     cpu.interrupt(Interrupt::Reset);
-    // cpu.interrupt(Interrupt::Nmi);
-    ppu.reg = cpu.exec(ppu.reg);
     for _ in 0..20 {
-        ppu.reg = cpu.exec(ppu.reg);
-        ppu.exec();
-        ppu.exec();
-        ppu.exec();
-        ppu.exec();
+        let cycles = cpu.exec();
+
+        for _ in 0..(cycles * 4) {
+            ppu.exec();
+            ppu.exec();
+            ppu.exec();
+            ppu.exec();
+        }
+
+        apu.exec();
     }
 
     println!("CPU {:?}", cpu);

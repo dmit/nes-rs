@@ -1,21 +1,23 @@
+use std::cell::RefCell;
 use std::fmt;
 use std::io::{Read, Write};
+use std::rc::Rc;
 
 use apu::ApuReg;
-use cpu_instr::{Instr, Mode, Op};
+use cpu_instr::{Cycles, Instr, Mode, Op};
 use ppu::PpuReg;
 use rom::Rom;
 
 pub struct Cpu {
     reg: Reg,
     ram: [u8; 0x800],
-    ppu_reg: PpuReg,
-    apu_reg: ApuReg,
+    ppu_reg: Rc<RefCell<PpuReg>>,
+    apu_reg: Rc<RefCell<ApuReg>>,
     sram: [u8; 0x2000],
     prg_rom: [u8; 0x8000],
 }
 impl Cpu {
-    pub fn new(rom: &Rom) -> Cpu {
+    pub fn new(ppu_reg: Rc<RefCell<PpuReg>>, apu_reg: Rc<RefCell<ApuReg>>, rom: Rom) -> Cpu {
         let mut prg_rom = [0u8; 0x8000];
         for (i, b) in rom.prg_rom
                          .iter()
@@ -28,8 +30,8 @@ impl Cpu {
         Cpu {
             reg: Reg::default(),
             ram: [0; 0x800],
-            ppu_reg: PpuReg::default(),
-            apu_reg: ApuReg::default(),
+            ppu_reg: ppu_reg,
+            apu_reg: apu_reg,
             sram: [0; 0x2000],
             prg_rom: prg_rom,
         }
@@ -39,9 +41,9 @@ impl Cpu {
         match addr {
             0x0000...0x07ff => self.ram[addr as usize],
             0x0800...0x1fff => self.ram[(addr % 0x800) as usize],
-            0x2000...0x2007 => self.ppu_reg.read(addr - 0x2000),
-            0x2008...0x3fff => self.ppu_reg.read((addr - 0x2008) % 8),
-            0x4000...0x401f => self.apu_reg.read(addr - 0x4000),
+            0x2000...0x2007 => self.ppu_reg.borrow().read(addr - 0x2000),
+            0x2008...0x3fff => self.ppu_reg.borrow().read((addr - 0x2008) % 8),
+            0x4000...0x401f => self.apu_reg.borrow().read(addr - 0x4000),
             0x4020...0x5fff => panic!("expansion rom"),
             0x6000...0x7fff => self.sram[(addr - 0x6000) as usize],
             0x8000...0xffff => self.prg_rom[(addr - 0x8000) as usize],
@@ -61,9 +63,9 @@ impl Cpu {
         match addr {
             0x0000...0x07ff => self.ram[addr as usize] = value,
             0x0800...0x1fff => self.ram[(addr % 0x800) as usize] = value,
-            0x2000...0x2007 => self.ppu_reg.write(addr - 0x2000, value),
-            0x2008...0x3fff => self.ppu_reg.write((addr - 0x2008) % 8, value),
-            0x4000...0x401f => self.apu_reg.write(addr - 0x4000, value),
+            0x2000...0x2007 => self.ppu_reg.borrow_mut().write(addr - 0x2000, value),
+            0x2008...0x3fff => self.ppu_reg.borrow_mut().write((addr - 0x2008) % 8, value),
+            0x4000...0x401f => self.apu_reg.borrow_mut().write(addr - 0x4000, value),
             0x4020...0x5fff => panic!("expansion rom"),
             0x6000...0x7fff => self.sram[(addr - 0x6000) as usize] = value,
             0x8000...0xffff => self.prg_rom[(addr - 0x8000) as usize] = value,
@@ -89,20 +91,22 @@ impl Cpu {
         self.reg.sp = self.reg.sp.wrapping_sub(1);
     }
 
-    pub fn exec(&mut self, ppu_reg: PpuReg) -> PpuReg {
-        self.ppu_reg = ppu_reg;
-
+    pub fn exec(&mut self) -> u8 {
         let addr = self.reg.pc;
         let opcode = self.read_u8(addr);
         let instr = Instr::from(opcode);
-        let b1 = self.read_u8(addr + 1);
-        let b2 = self.read_u8(addr + 2);
-        println!("{:#06x} {:#04x} {:?} -- {:02x} {:02x}",
-                 addr,
-                 opcode,
-                 instr,
-                 b1,
-                 b2);
+        let payload: String = if instr.1.payload_len() == 0 {
+            String::from("")
+        } else {
+            let mut hex = String::with_capacity(2 + instr.1.payload_len() as usize * 2);
+            hex.push_str("0x");
+            for i in (0..instr.1.payload_len()).rev() {
+                let byte = self.read_u8(addr + 1 + i);
+                hex.push_str(&format!("{:02x}", byte));
+            }
+            hex
+        };
+        println!("{:#06x} {:#04x} {:?} {}", addr, opcode, instr, payload);
 
         self.reg.pc = self.reg.pc.wrapping_add(1);
 
@@ -286,7 +290,11 @@ impl Cpu {
             }
         }
 
-        self.ppu_reg
+        match instr.2 {
+            Cycles::A(c) => c,
+            Cycles::B(c) => c,
+            Cycles::C(c) => c,
+        }
     }
 
     fn payload_addr(&mut self, mode: Mode) -> u16 {
@@ -372,11 +380,7 @@ impl Cpu {
 }
 impl fmt::Debug for Cpu {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f,
-               "{:?}\n{:#?}\n{:#?}",
-               self.reg,
-               self.ppu_reg,
-               self.apu_reg)
+        write!(f, "{:?}", self.reg)
     }
 }
 
