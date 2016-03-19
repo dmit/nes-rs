@@ -3,5 +3,20 @@ name = "nes-rs"
 version = "0.1.0"
 authors = ["Dmitri Melnikov <github@dmit.me>"]
 
+[lib]
+name = "nes"
+
+[[bin]]
+name = "emu"
+path = "src/bin/emu.rs"
+
+[[bin]]
+name = "asm"
+path = "src/bin/asm.rs"
+
+[[bin]]
+name = "disasm"
+path = "src/bin/disasm.rs"
+
 [dependencies]
 byteorder = "0.4.2"

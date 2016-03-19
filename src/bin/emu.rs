@@ -1,15 +1,10 @@
 extern crate byteorder;
+extern crate nes;
 
-mod apu;
-mod cpu;
-mod cpu_instr;
-mod ppu;
-mod rom;
-
-use apu::Apu;
-use cpu::{Cpu, Interrupt};
-use ppu::Ppu;
-use rom::Rom;
+use nes::apu::Apu;
+use nes::cpu::{Cpu, Interrupt};
+use nes::ppu::Ppu;
+use nes::rom::Rom;
 
 use std::env;
 use std::fs::File;
