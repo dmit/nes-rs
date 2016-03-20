@@ -1,5 +1,6 @@
 extern crate nes;
 
+use nes::cpu_instr::Instr;
 use nes::rom::Rom;
 
 use std::env;
@@ -16,4 +17,13 @@ fn main() {
     };
 
     println!("{:?}", rom);
+
+    let mut i = 0;
+    while i < rom.prg_rom.len() {
+        let addr = 0x8000 + i;
+        let bytes = &rom.prg_rom[i..];
+        let instr = Instr::from(bytes);
+        println!("{:#06x}  {:?}", addr, instr);
+        i += 1 + instr.1.payload_len() as usize;
+    }
 }
