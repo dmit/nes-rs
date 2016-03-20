@@ -59,6 +59,14 @@ impl Cpu {
         self.read_u8(addr) as u16 | (self.read_u8(addr + 1) as u16) << 8
     }
 
+    fn read_bytes(&self, addr: u16, len: u16) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(len as usize);
+        for i in addr..addr+len {
+            bytes.push(self.read_u8(i));
+        }
+        bytes
+    }
+
     fn write_u8(&mut self, addr: u16, value: u8) {
         match addr {
             0x0000...0x07ff => self.ram[addr as usize] = value,
@@ -93,22 +101,11 @@ impl Cpu {
 
     pub fn exec(&mut self) -> u8 {
         let addr = self.reg.pc;
-        let opcode = self.read_u8(addr);
-        let instr = Instr::from(opcode);
-        let payload: String = if instr.1.payload_len() == 0 {
-            String::from("")
-        } else {
-            let mut hex = String::with_capacity(2 + instr.1.payload_len() as usize * 2);
-            hex.push_str("0x");
-            for i in (0..instr.1.payload_len()).rev() {
-                let byte = self.read_u8(addr + 1 + i);
-                hex.push_str(&format!("{:02x}", byte));
-            }
-            hex
-        };
-        println!("{:#06x} {:#04x} {:?} {}", addr, opcode, instr, payload);
+        let bytes = self.read_bytes(addr, 3);
+        let instr = Instr::from(&bytes);
+        println!("{:#06x} {:?}", addr, instr);
 
-        self.reg.pc = self.reg.pc.wrapping_add(1);
+        self.reg.pc = self.reg.pc.wrapping_add(1 + instr.1.payload_len());
 
         match instr {
             Instr(Op::And, m, c) => {
@@ -285,7 +282,7 @@ impl Cpu {
             _ => {
                 panic!("Unknown instruction {:?} from opcode {:#x} at {:#x}",
                        instr,
-                       opcode,
+                       bytes[0],
                        addr)
             }
         }
@@ -298,65 +295,46 @@ impl Cpu {
     }
 
     fn payload_addr(&mut self, mode: Mode) -> u16 {
-        let addr = match mode {
-            Mode::Abs => self.read_u16(self.reg.pc),
-            Mode::AbsX => {
-                let offset = self.read_u8(self.reg.pc);
-                (self.reg.x as u16).wrapping_add(offset as u16)
-            }
-            Mode::AbsY => {
-                let offset = self.read_u8(self.reg.pc);
-                (self.reg.y as u16).wrapping_add(offset as u16)
-            }
-            Mode::Imm => self.reg.pc,
-            Mode::Ind => {
-                let addr = self.read_u16(self.reg.pc);
-                self.read_u16(addr)
-            }
-            Mode::IndX => {
-                let zero_offset = self.read_u8(self.reg.pc);
-                let zero_addr = self.reg.x as u16 + zero_offset as u16;
+        match mode {
+            Mode::Abs(addr) => addr,
+            Mode::AbsX(offset) => (self.reg.x as u16).wrapping_add(offset),
+            Mode::AbsY(offset) => (self.reg.y as u16).wrapping_add(offset),
+            Mode::Imm(_) => unreachable!(),
+            Mode::Ind(addr_addr) => self.read_u16(addr_addr),
+            Mode::IndX(offset) => {
+                let zero_addr = self.reg.x as u16 + offset as u16;
                 self.read_u16(zero_addr)
             }
-            Mode::IndY => {
-                let zero_offset = self.read_u8(self.reg.pc);
-                let zero_addr = self.read_u16(zero_offset as u16);
+            Mode::IndY(offset) => {
+                let zero_addr = self.read_u16(offset as u16);
                 zero_addr + self.reg.y as u16
             }
-            Mode::Rel => {
-                let offset = self.read_i8(self.reg.pc);
+            Mode::Rel(offset) => {
                 if offset < 0 {
                     self.reg
                         .pc
-                        .wrapping_add(1)
                         .wrapping_sub(offset.wrapping_neg() as u16)
                 } else {
                     self.reg
                         .pc
-                        .wrapping_add(1)
                         .wrapping_add(offset as u16)
                 }
             }
-            Mode::Zero => self.read_u8(self.reg.pc) as u16,
-            Mode::ZeroX => {
-                let offset = self.read_u8(self.reg.pc);
-                self.reg.x.wrapping_add(offset) as u16
-            }
-            Mode::ZeroY => {
-                let offset = self.read_u8(self.reg.pc);
-                self.reg.y.wrapping_add(offset) as u16
-            }
+            Mode::Zero(addr) => addr as u16,
+            Mode::ZeroX(offset) => self.reg.x.wrapping_add(offset) as u16,
+            Mode::ZeroY(offset) => self.reg.y.wrapping_add(offset) as u16,
             _ => panic!("Unsupported address mode: {:?}", mode),
-        };
-
-        self.reg.pc = self.reg.pc.wrapping_add(mode.payload_len());
-
-        addr
+        }
     }
 
     fn payload_u8(&mut self, mode: Mode) -> u8 {
-        let addr = self.payload_addr(mode);
-        self.read_u8(addr)
+        match mode {
+            Mode::Imm(p) => p,
+            m => {
+                let addr = self.payload_addr(mode);
+                self.read_u8(addr)
+            }
+        }
     }
 
     fn payload_u16(&mut self, mode: Mode) -> u16 {
