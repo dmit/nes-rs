@@ -81,7 +81,7 @@ pub struct PpuReg {
 impl PpuReg {
     pub fn read(&self, addr: u16) -> u8 {
         match addr {
-            2 => self.ppu_status.clone().into(),
+            2 => self.ppu_status.into(),
             7 => self.vram_io,
             _ => panic!("Not a valid PpuReg address: {:#x}", addr),
         }

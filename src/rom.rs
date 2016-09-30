@@ -67,9 +67,10 @@ impl Rom {
 
         let ctrl1 = rdr.read_u8().unwrap();
         let ctrl2 = rdr.read_u8().unwrap();
-        let mirroring = match ctrl1 & 0b1 == 0 {
-            true => Mirroring::Vertical,
-            false => Mirroring::Horizontal,
+        let mirroring = if ctrl1 & 0b1 == 0 {
+            Mirroring::Vertical
+        } else {
+            Mirroring::Horizontal
         };
         let sram_enabled = ctrl1 & 0b10 != 0;
         let trainer_present = ctrl1 & 0b100 != 0;
@@ -81,15 +82,14 @@ impl Rom {
             panic!("Invalid padding: {:#x}", padding);
         }
 
-        let trainer: Option<Vec<u8>> = match trainer_present {
-            true => {
-                let mut vec = vec![0; 512];
-                if rdr.read(&mut vec).expect("512-byte trainer") != 512 {
-                    panic!("Failed to read 512-byte trainer");
-                }
-                Some(vec)
+        let trainer: Option<Vec<u8>> = if trainer_present {
+            let mut vec = vec![0; 512];
+            if rdr.read(&mut vec).expect("512-byte trainer") != 512 {
+                panic!("Failed to read 512-byte trainer");
             }
-            false => None,
+            Some(vec)
+        } else {
+            None
         };
 
         let prg_rom_len: usize = 16 * 1024 * prg_cnt as usize;

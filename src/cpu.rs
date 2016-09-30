@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 use std::fmt;
-use std::io::{Read, Write};
 use std::rc::Rc;
 
 use apu::ApuReg;
@@ -20,10 +19,10 @@ impl Cpu {
     pub fn new(ppu_reg: Rc<RefCell<PpuReg>>, apu_reg: Rc<RefCell<ApuReg>>, rom: Rom) -> Cpu {
         let mut prg_rom = [0u8; 0x8000];
         for (i, b) in rom.prg_rom
-                         .iter()
-                         .cycle()
-                         .take(0x8000)
-                         .enumerate() {
+            .iter()
+            .cycle()
+            .take(0x8000)
+            .enumerate() {
             prg_rom[i] = *b;
         }
 
@@ -61,7 +60,7 @@ impl Cpu {
 
     fn read_bytes(&self, addr: u16, len: u16) -> Vec<u8> {
         let mut bytes = Vec::with_capacity(len as usize);
-        for i in addr..addr+len {
+        for i in addr..addr + len {
             bytes.push(self.read_u8(i));
         }
         bytes
@@ -108,7 +107,7 @@ impl Cpu {
         self.reg.pc = self.reg.pc.wrapping_add(1 + instr.1.payload_len());
 
         match instr {
-            Instr(Op::And, m, c) => {
+            Instr(Op::And, m, _) => {
                 let mem = self.payload_u8(m);
                 let val = self.reg.acc & mem;
 
@@ -117,7 +116,7 @@ impl Cpu {
 
                 self.reg.acc = val;
             }
-            Instr(Op::Asl, m, c) => {
+            Instr(Op::Asl, m, _) => {
                 let addr = self.payload_u16(m);
                 let old_val = self.read_u8(addr);
                 let new_val = old_val << 1;
@@ -128,46 +127,46 @@ impl Cpu {
 
                 self.write_u8(addr, new_val);
             }
-            Instr(Op::Bcs, m, c) => {
+            Instr(Op::Bcs, m, _) => {
                 let addr = self.payload_u16(m);
                 if self.reg.status.carry {
                     self.reg.pc = addr;
                 }
             }
-            Instr(Op::Beq, m, c) => {
+            Instr(Op::Beq, m, _) => {
                 let addr = self.payload_u16(m);
                 if self.reg.status.zero {
                     self.reg.pc = addr;
                 }
             }
-            Instr(Op::Bit, m, c) => {
+            Instr(Op::Bit, m, _) => {
                 let val = self.payload_u8(m);
 
                 self.reg.status.neg = val & 0b1000_0000 != 0;
                 self.reg.status.overflow = val & 0b0100_0000 != 0;
                 self.reg.status.zero = val & self.reg.acc == 0;
             }
-            Instr(Op::Bmi, m, c) => {
+            Instr(Op::Bmi, m, _) => {
                 let addr = self.payload_u16(m);
                 if self.reg.status.neg {
                     self.reg.pc = addr;
                 }
             }
-            Instr(Op::Bne, m, c) => {
+            Instr(Op::Bne, m, _) => {
                 let addr = self.payload_u16(m);
                 if !self.reg.status.zero {
                     self.reg.pc = addr;
                 }
             }
-            Instr(Op::Bpl, m, c) => {
+            Instr(Op::Bpl, m, _) => {
                 let addr = self.payload_addr(m);
                 if !self.reg.status.neg {
                     self.reg.pc = addr;
                 }
             }
-            Instr(Op::Brk, m, c) => self.interrupt(Interrupt::Brk),
-            Instr(Op::Cld, m, c) => self.reg.status.decimal_mode = false,
-            Instr(Op::Cmp, m, c) => {
+            Instr(Op::Brk, _, _) => self.interrupt(Interrupt::Brk),
+            Instr(Op::Cld, _, _) => self.reg.status.decimal_mode = false,
+            Instr(Op::Cmp, m, _) => {
                 let mem = self.payload_u8(m);
                 let val = self.reg.acc - mem;
 
@@ -175,7 +174,7 @@ impl Cpu {
                 self.reg.status.neg = val & 0b1000_0000 != 0;
                 self.reg.status.zero = val == 0;
             }
-            Instr(Op::Dec, m, c) => {
+            Instr(Op::Dec, m, _) => {
                 let addr = self.payload_u16(m);
                 let val = self.read_u8(addr).wrapping_sub(1);
 
@@ -184,17 +183,17 @@ impl Cpu {
 
                 self.write_u8(addr, val);
             }
-            Instr(Op::Dex, m, c) => {
+            Instr(Op::Dex, _, _) => {
                 self.reg.x = self.reg.x.wrapping_sub(1);
                 self.reg.status.neg = self.reg.x & 0b1000_0000 != 0;
                 self.reg.status.zero = self.reg.x == 0;
             }
-            Instr(Op::Dey, m, c) => {
+            Instr(Op::Dey, _, _) => {
                 self.reg.y = self.reg.y.wrapping_sub(1);
                 self.reg.status.neg = self.reg.y & 0b1000_0000 != 0;
                 self.reg.status.zero = self.reg.y == 0;
             }
-            Instr(Op::Inc, m, c) => {
+            Instr(Op::Inc, m, _) => {
                 let addr = self.payload_u16(m);
                 let val = self.read_u8(addr).wrapping_add(1);
 
@@ -203,17 +202,17 @@ impl Cpu {
 
                 self.write_u8(addr, val);
             }
-            Instr(Op::Inx, m, c) => {
+            Instr(Op::Inx, _, _) => {
                 self.reg.x = self.reg.x.wrapping_add(1);
                 self.reg.status.neg = self.reg.x & 0b1000_0000 != 0;
                 self.reg.status.zero = self.reg.x == 0;
             }
-            Instr(Op::Iny, m, c) => {
+            Instr(Op::Iny, _, _) => {
                 self.reg.y = self.reg.y.wrapping_add(1);
                 self.reg.status.neg = self.reg.y & 0b1000_0000 != 0;
                 self.reg.status.zero = self.reg.y == 0;
             }
-            Instr(Op::Lda, m, c) => {
+            Instr(Op::Lda, m, _) => {
                 let val = self.payload_u8(m);
 
                 self.reg.status.neg = val & 0b1000_0000 != 0;
@@ -221,7 +220,7 @@ impl Cpu {
 
                 self.reg.acc = val;
             }
-            Instr(Op::Ldx, m, c) => {
+            Instr(Op::Ldx, m, _) => {
                 let val = self.payload_u8(m);
 
                 self.reg.status.neg = val & 0b1000_0000 != 0;
@@ -229,7 +228,7 @@ impl Cpu {
 
                 self.reg.x = val;
             }
-            Instr(Op::Ldy, m, c) => {
+            Instr(Op::Ldy, m, _) => {
                 let val = self.payload_u8(m);
 
                 self.reg.status.neg = val & 0b1000_0000 != 0;
@@ -237,43 +236,43 @@ impl Cpu {
 
                 self.reg.y = val;
             }
-            Instr(Op::Ora, m, c) => {
+            Instr(Op::Ora, m, _) => {
                 let mem = self.payload_u8(m);
                 let val = self.reg.acc | mem;
 
                 self.reg.status.neg = val & 0b1000_0000 != 0;
                 self.reg.status.zero = val == 0;
             }
-            Instr(Op::Rts, m, c) => self.reg.pc = self.pop_u16().wrapping_add(1),
-            Instr(Op::Sei, m, c) => self.reg.status.irq_disabled = true,
-            Instr(Op::Sta, m, c) => {
+            Instr(Op::Rts, _, _) => self.reg.pc = self.pop_u16().wrapping_add(1),
+            Instr(Op::Sei, _, _) => self.reg.status.irq_disabled = true,
+            Instr(Op::Sta, m, _) => {
                 let addr = self.payload_addr(m);
                 let val = self.reg.acc;
                 self.write_u8(addr, val);
             }
-            Instr(Op::Stx, m, c) => {
+            Instr(Op::Stx, m, _) => {
                 let addr = self.payload_addr(m);
                 let val = self.reg.x;
                 self.write_u8(addr, val);
             }
-            Instr(Op::Sty, m, c) => {
+            Instr(Op::Sty, m, _) => {
                 let addr = self.payload_addr(m);
                 let val = self.reg.y;
                 self.write_u8(addr, val);
             }
-            Instr(Op::Txa, m, c) => {
+            Instr(Op::Txa, _, _) => {
                 self.reg.status.neg = self.reg.x & 0b1000_0000 != 0;
                 self.reg.status.zero = self.reg.x == 0;
 
                 self.reg.acc = self.reg.x;
             }
-            Instr(Op::Txs, m, c) => {
+            Instr(Op::Txs, _, _) => {
                 self.reg.status.neg = self.reg.x & 0b1000_0000 != 0;
                 self.reg.status.zero = self.reg.x == 0;
 
                 self.reg.sp = self.reg.x;
             }
-            Instr(Op::Tya, m, c) => {
+            Instr(Op::Tya, _, _) => {
                 self.reg.status.neg = self.reg.y & 0b1000_0000 != 0;
                 self.reg.status.zero = self.reg.y == 0;
 
@@ -288,9 +287,7 @@ impl Cpu {
         }
 
         match instr.2 {
-            Cycles::A(c) => c,
-            Cycles::B(c) => c,
-            Cycles::C(c) => c,
+            Cycles::A(c) | Cycles::B(c) | Cycles::C(c) => c,
         }
     }
 
@@ -330,7 +327,7 @@ impl Cpu {
     fn payload_u8(&mut self, mode: Mode) -> u8 {
         match mode {
             Mode::Imm(p) => p,
-            m => {
+            _ => {
                 let addr = self.payload_addr(mode);
                 self.read_u8(addr)
             }
@@ -429,8 +426,7 @@ pub enum Interrupt {
 impl Interrupt {
     fn addr(&self) -> u16 {
         match *self {
-            Interrupt::Brk => 0xfffe,
-            Interrupt::Irq => 0xfffe,
+            Interrupt::Brk | Interrupt::Irq => 0xfffe,
             Interrupt::Nmi => 0xfffa,
             Interrupt::Reset => 0xfffc,
         }
